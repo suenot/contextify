@@ -1,0 +1,10 @@
+*.md
+*.txt
+*.toml
+*.rs
+*.py
+*.ts
+*.js
+*.go
+*.cpp
+*.hpp
