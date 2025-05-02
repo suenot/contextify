@@ -230,6 +230,7 @@ Another text file.
             
             // From command line arguments
             if !cli.blacklist_patterns.is_empty() {
+                println!("Adding command line blacklist patterns: {:?}", cli.blacklist_patterns);
                 blacklist_patterns.extend(cli.blacklist_patterns.clone());
             }
             
@@ -264,6 +265,7 @@ Another text file.
             
             // Get whitelist patterns
             if !cli.whitelist_patterns.is_empty() {
+                println!("Adding command line whitelist patterns: {:?}", cli.whitelist_patterns);
                 whitelist_patterns.extend(cli.whitelist_patterns.clone());
             }
             

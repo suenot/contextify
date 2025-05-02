@@ -126,6 +126,9 @@ pub fn save_project_structure_and_files(
     let mut filtered_files = Vec::new();
     
     for (path, path_str) in all_files {
+        // Debug print for path_str
+        // println!("Processing file: {}", path_str);
+        
         let should_include = if !whitelist_patterns.is_empty() {
             // Whitelist mode - only include if matches a pattern
             whitelist_patterns.iter().any(|pattern| {
@@ -146,13 +149,27 @@ pub fn save_project_structure_and_files(
             })
         } else if !blacklist_patterns.is_empty() {
             // Blacklist mode - exclude if matches any pattern
-            !blacklist_patterns.iter().any(|pattern| {
+            let should_exclude = blacklist_patterns.iter().any(|pattern| {
+                // Debug print for pattern matching
+                // println!("  Checking pattern: {}", pattern);
+                
                 let pattern_matches = glob::Pattern::new(pattern)
                     .map(|p| p.matches(&path_str))
                     .unwrap_or(false);
                 
-                // Also check if it matches the pattern in a subdirectory
-                let in_subdir = if pattern.starts_with('*') {
+                // Check for directory pattern match (e.g. "old_projects/")
+                let dir_match = if pattern.ends_with('/') {
+                    // If pattern ends with '/', match if path_str starts with this directory
+                    path_str.starts_with(pattern) || path_str == pattern.trim_end_matches('/')
+                } else if !pattern.contains('*') && !pattern.contains('.') {
+                    // If pattern is a simple directory name without extension or wildcards
+                    path_str.starts_with(&format!("{}/", pattern)) || path_str == pattern.as_str()
+                } else {
+                    false
+                };
+                
+                // Also check if it matches a wildcard pattern in a subdirectory
+                let wild_subdir_match = if pattern.starts_with('*') {
                     glob::Pattern::new(&format!("**/{}", pattern))
                         .map(|p| p.matches(&path_str))
                         .unwrap_or(false)
@@ -160,15 +177,17 @@ pub fn save_project_structure_and_files(
                     false
                 };
                 
-                // Special case for directory blacklisting
-                let dir_match = if !pattern.contains('*') && !pattern.contains('.') {
-                    path_str.starts_with(&format!("{}/", pattern))
-                } else {
-                    false
-                };
+                let result = pattern_matches || dir_match || wild_subdir_match;
                 
-                pattern_matches || in_subdir || dir_match
-            })
+                // Print debug info if the file is actually excluded
+                if result && path_str.contains("old_projects/") {
+                    println!("  EXCLUDED by pattern '{}': {}", pattern, path_str);
+                }
+                
+                result
+            });
+            
+            !should_exclude
         } else {
             // No filters, include everything
             true
@@ -179,11 +198,32 @@ pub fn save_project_structure_and_files(
         }
     }
     
+    // Double-check for any old_projects files that made it through
+    let old_projects_files = filtered_files.iter()
+        .filter(|(_, path_str)| path_str.contains("old_projects/"))
+        .collect::<Vec<_>>();
+    
+    if !old_projects_files.is_empty() {
+        println!("WARNING: Found {} files in old_projects/ that weren't filtered out:", old_projects_files.len());
+        for (_, path_str) in old_projects_files.iter().take(5) {
+            println!("  {}", path_str);
+        }
+        if old_projects_files.len() > 5 {
+            println!("  ... and {} more", old_projects_files.len() - 5);
+        }
+    }
+    
     stats.file_count = filtered_files.len();
     
     // Process the filtered files
     let mut results = Vec::new();
     for (path, path_str) in filtered_files {
+        // Skip files in old_projects directory as a final safety check
+        if path_str.contains("old_projects/") {
+            println!("Skipping old_projects file: {}", path_str);
+            continue;
+        }
+    
         // Capture file content
         let content = match fs::read_to_string(&path) {
             Ok(content) => content,
