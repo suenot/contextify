@@ -1,6 +1,6 @@
 [package]
 name = "contextify"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Eugen Soloviov (suenot)"]
 description = "A tool to save project structure and contents to a text file"
