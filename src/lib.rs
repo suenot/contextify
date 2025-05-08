@@ -126,9 +126,68 @@ pub fn save_project_structure_and_files(
     let mut filtered_files = Vec::new();
     
     for (path, path_str) in all_files {
-        // Debug print for path_str
-        // println!("Processing file: {}", path_str);
+        // First apply blacklist patterns - skip this file if it matches any blacklist pattern
+        let blacklisted = if !blacklist_patterns.is_empty() {
+            blacklist_patterns.iter().any(|pattern| {
+                // Debug print for pattern matching
+                // println!("  Checking pattern: {}", pattern);
+                
+                let pattern_matches = glob::Pattern::new(pattern)
+                    .map(|p| p.matches(&path_str))
+                    .unwrap_or(false);
+                
+                // Check for directory pattern match (e.g. "old_projects/")
+                let dir_match = if pattern.ends_with('/') {
+                    // If pattern ends with '/', match if path_str starts with this directory
+                    let clean_pattern = pattern.trim_end_matches('/');
+                    path_str.starts_with(&format!("{}/", clean_pattern)) || path_str == clean_pattern
+                } else if !pattern.contains('*') && !pattern.contains('.') {
+                    // If pattern is a simple directory name without extension or wildcards
+                    // Match if it's a directory part of the path
+                    let path_parts: Vec<&str> = path_str.split('/').collect();
+                    path_parts.contains(&pattern.as_str()) || 
+                    path_str.starts_with(&format!("{}/", pattern)) || 
+                    path_str == pattern.as_str()
+                } else {
+                    false
+                };
+                
+                // Special debug for certain patterns
+                if pattern == "old_projects/" || pattern == "hlider-ios-swiftui/" {
+                    println!("Directory pattern check: '{}' against '{}'", pattern, path_str);
+                    println!("  - Final result: {}", dir_match || pattern_matches);
+                }
+                
+                // Also check if it matches a wildcard pattern in a subdirectory
+                let wild_subdir_match = if pattern.starts_with('*') {
+                    glob::Pattern::new(&format!("**/{}", pattern))
+                        .map(|p| p.matches(&path_str))
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+                
+                let result = pattern_matches || dir_match || wild_subdir_match;
+                
+                // Print debug info if the file is actually excluded
+                if result {
+                    if pattern == "old_projects/" || pattern == "hlider-ios-swiftui/" {
+                        println!("  EXCLUDED by pattern '{}': {}", pattern, path_str);
+                    }
+                }
+                
+                result
+            })
+        } else {
+            false
+        };
         
+        // If file is blacklisted, skip it
+        if blacklisted {
+            continue;
+        }
+        
+        // Then apply whitelist patterns if any
         let should_include = if !whitelist_patterns.is_empty() {
             // Whitelist mode - only include if matches a pattern
             whitelist_patterns.iter().any(|pattern| {
@@ -147,49 +206,8 @@ pub fn save_project_structure_and_files(
                 
                 pattern_matches || in_subdir
             })
-        } else if !blacklist_patterns.is_empty() {
-            // Blacklist mode - exclude if matches any pattern
-            let should_exclude = blacklist_patterns.iter().any(|pattern| {
-                // Debug print for pattern matching
-                // println!("  Checking pattern: {}", pattern);
-                
-                let pattern_matches = glob::Pattern::new(pattern)
-                    .map(|p| p.matches(&path_str))
-                    .unwrap_or(false);
-                
-                // Check for directory pattern match (e.g. "old_projects/")
-                let dir_match = if pattern.ends_with('/') {
-                    // If pattern ends with '/', match if path_str starts with this directory
-                    path_str.starts_with(pattern) || path_str == pattern.trim_end_matches('/')
-                } else if !pattern.contains('*') && !pattern.contains('.') {
-                    // If pattern is a simple directory name without extension or wildcards
-                    path_str.starts_with(&format!("{}/", pattern)) || path_str == pattern.as_str()
-                } else {
-                    false
-                };
-                
-                // Also check if it matches a wildcard pattern in a subdirectory
-                let wild_subdir_match = if pattern.starts_with('*') {
-                    glob::Pattern::new(&format!("**/{}", pattern))
-                        .map(|p| p.matches(&path_str))
-                        .unwrap_or(false)
-                } else {
-                    false
-                };
-                
-                let result = pattern_matches || dir_match || wild_subdir_match;
-                
-                // Print debug info if the file is actually excluded
-                if result && path_str.contains("old_projects/") {
-                    println!("  EXCLUDED by pattern '{}': {}", pattern, path_str);
-                }
-                
-                result
-            });
-            
-            !should_exclude
         } else {
-            // No filters, include everything
+            // No whitelist, include everything that made it past the blacklist
             true
         };
         

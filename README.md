@@ -1,5 +1,7 @@
 # Contextify
 
+![logo](./logo.png)
+
 Contextify is a Rust utility that captures the structure and contents of a project directory and saves them into a text file. It's designed for quick documentation of your project's file system.
 
 ## Features

@@ -222,6 +222,7 @@ Another text file.
             println!("  contextify --gitignore            # Use .gitignore for exclusions");
             println!("  contextify --blacklist-patterns \"target/,.git/\" --output result.txt");
             println!("  contextify --whitelist-patterns \"*.rs,*.md\" --stats");
+            println!("  contextify --blacklist-patterns \"old_projects/,vendor/\" --whitelist-patterns \"*.kt,*.swift\" --gitignore");
             return Ok(());
         }
         None => {
