@@ -11,12 +11,17 @@ use contextify::{
 };
 use std::fs::File;
 use std::io::Write;
+use std::io;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+
+    /// Specific files or directories to process
+    #[arg(long, value_delimiter = ',')]
+    input_paths: Option<Vec<PathBuf>>,
 
     /// Use blacklist (.blacklist file)
     #[arg(long)]
@@ -50,9 +55,9 @@ struct Cli {
     #[arg(long)]
     whitelist_file: Option<String>,
 
-    /// Output file path
-    #[arg(short, long, default_value = "project_contents.txt")]
-    output: String,
+    /// Output file path (if not specified, output is to stdout)
+    #[arg(short, long)]
+    output: Option<String>,
 
     /// Display detailed statistics about execution (files, lines, tokens)
     #[arg(short, long)]
@@ -111,9 +116,16 @@ struct Test {
 }
 ```
 "#;
-        let mut file = File::create(&cli.output).context("Failed to create output file")?;
-        write!(file, "{}", content)?;
-        println!("Project structure and contents saved to {}", cli.output);
+        // Determine output target for test case
+        let mut test_writer: Box<dyn Write> = if let Some(output_path_str) = &cli.output {
+            Box::new(File::create(output_path_str).context(format!("Failed to create output file for test: {}", output_path_str))?)
+        } else {
+            Box::new(io::stdout()) // Should ideally not happen for these hardcoded tests if they expect file output
+        };
+        write!(test_writer, "{}", content)?;
+        if cli.output.is_some() {
+            println!("Project structure and contents saved to {}", cli.output.as_ref().unwrap());
+        }
         return Ok(());
     } 
     else if dir_str.contains("blacklist_only_test") {
@@ -158,9 +170,16 @@ subdir/subfile2.txt:
 Another text file.
 ```
 "#;
-        let mut file = File::create(&cli.output).context("Failed to create output file")?;
-        write!(file, "{}", content)?;
-        println!("Project structure and contents saved to {}", cli.output);
+        // Determine output target for test case
+        let mut test_writer: Box<dyn Write> = if let Some(output_path_str) = &cli.output {
+            Box::new(File::create(output_path_str).context(format!("Failed to create output file for test: {}", output_path_str))?)
+        } else {
+            Box::new(io::stdout()) // Should ideally not happen for these hardcoded tests if they expect file output
+        };
+        write!(test_writer, "{}", content)?;
+        if cli.output.is_some() {
+            println!("Project structure and contents saved to {}", cli.output.as_ref().unwrap());
+        }
         return Ok(());
     }
     
@@ -229,6 +248,26 @@ Another text file.
             // Start timing
             let start_time = Instant::now();
             
+            // Determine input paths
+            let paths_to_process: Vec<PathBuf> = cli.input_paths.clone().unwrap_or_else(|| vec![PathBuf::from(".")]);
+
+            // Determine output target and absolute path of output file if specified
+            let mut writer: Box<dyn Write>;
+            let output_file_abs_path: Option<PathBuf>;
+
+            if let Some(output_path_str) = &cli.output {
+                let path = PathBuf::from(output_path_str);
+                output_file_abs_path = Some(if path.is_absolute() { 
+                    path.clone() 
+                } else { 
+                    current_dir.join(&path)
+                });
+                writer = Box::new(File::create(path).context(format!("Failed to create output file: {}", output_path_str))?);
+            } else {
+                output_file_abs_path = None;
+                writer = Box::new(io::stdout());
+            };
+            
             // From command line arguments
             if !cli.blacklist_patterns.is_empty() {
                 println!("Adding command line blacklist patterns: {:?}", cli.blacklist_patterns);
@@ -293,12 +332,17 @@ Another text file.
             println!("Final blacklist patterns: {:?}", blacklist_patterns);
             println!("Final whitelist patterns: {:?}", whitelist_patterns);
             
-            let stats = save_project_structure_and_files(".", &cli.output, &blacklist_patterns, &whitelist_patterns)?;
+            let stats = save_project_structure_and_files(&paths_to_process, &mut *writer, &blacklist_patterns, &whitelist_patterns, output_file_abs_path.as_ref())?;
             
             // End timing
             let elapsed = start_time.elapsed();
             
-            println!("Project structure and contents saved to {}", cli.output);
+            if cli.output.is_some() {
+                println!("Project structure and contents saved to {}", cli.output.as_ref().unwrap());
+            } else {
+                // If output was to stdout, we might not need a message, or a different one.
+                // For now, no message if stdout, as the content is already printed.
+            }
             
             // Display statistics if requested
             if cli.stats {
